@@ -1,4 +1,4 @@
-# grafana-tempo-loki-tracing
+# observabilidade grafana-tempo-loki-tracing
 Grafana Distributed Tracing Example with: Tempo, Prometheus, Loki, Grafana, Alertmanager and Python Flask
 
 ## Getting Started
@@ -66,4 +66,3 @@ With `span.set_attribute` we can enrich some of the visuals:
 Produces:
 
 ![image](https://github.com/ruanbekker/grafana-tempo-loki-tracing/assets/567298/1c3ecd1e-fa48-4dc5-8caf-ce7a244c6fb3)
-# observabilidade
