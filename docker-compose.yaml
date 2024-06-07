@@ -1,0 +1,144 @@
+version: '3.9'
+
+x-logging:
+  &default-logging
+  driver: "json-file"
+  options:
+    max-size: "1m"
+    max-file: "1"
+    tag: "{{.Name}}"
+
+services:
+  order-service:
+    container_name: order-service
+    build:
+      context: order_service
+    ports:
+      - 5001:5000
+    networks:
+      - traces
+    labels:
+      logging: "promtail"
+      logging_jobname: "containerlogs"
+    logging: *default-logging
+
+  payment-service:
+    container_name: payment-service
+    build:
+      context: payment_service
+    ports:
+      - 5002:5000
+    networks:
+      - traces
+    labels:
+      logging: "promtail"
+      logging_jobname: "containerlogs"
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: grafana
+    ports:
+      - 3000:3000
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=light
+    volumes:
+      - ./configs/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/provisioning-datasources.yaml:ro
+    depends_on:
+      - tempo
+    networks:
+      - traces
+    logging: *default-logging
+
+  tempo:
+    image: grafana/tempo:2.3.1
+    container_name: tempo
+    ports:
+      - 3200:3200   # tempo http
+      - 9095:9095   # tempo grpc
+      - 14268:14268 # jaeger ingest
+      - 4317:4317   # http
+      - 4318:4318   # grpc
+
+    volumes:
+      - ./configs/tempo/tempo-local.yaml:/etc/tempo-local.yaml
+    command: ["-config.file=/etc/tempo-local.yaml"]
+    networks:
+      - traces
+    logging: *default-logging
+
+  promtail:
+    image:  grafana/promtail:2.9.7
+    container_name: promtail
+    volumes:
+      - ./configs/promtail/promtail.yaml:/etc/promtail/docker-config.yaml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/docker-config.yaml
+    depends_on:
+      - loki
+    networks:
+      - traces
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:2.9.7
+    container_name: loki
+    ports:
+      - 3100:3100
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - traces
+    logging: *default-logging
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus.yaml
+      - --web.enable-remote-write-receiver
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./configs/prometheus/prometheus.yaml:/etc/prometheus.yaml
+
+    ports:
+      - "9090:9090"
+    networks:
+      - traces
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager.yaml
+      - --web.listen-address=0.0.0.0:9093
+      - --cluster.advertise-address=0.0.0.0:9094
+      - --log.level=debug
+    volumes:
+      - ./configs/alertmanager/alertmanager.yaml:/etc/alertmanager.yaml
+    ports:
+      - "9093:9093"
+    networks:
+      - traces
+    logging: *default-logging
+
+  # blackbox:
+  #     image: prom/blackbox-exporter:v0.25.0
+  #     container_name: blackbox
+  #     command:
+  #       - --config.file=/etc/blackbox.yaml
+  #     volumes:
+  #       - ./configs/blackbox/blackbox.yaml:/etc/blackbox.yaml
+  #     ports:
+  #       - "9115:9115"
+  #     networks:
+  #       - traces
+  #     logging: *default-logging
+  
+networks:
+  traces:
+    external:
+      true
